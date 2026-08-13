@@ -42,3 +42,16 @@ export async function getFeedFollowsForUser(userId: string) {
     .innerJoin(users, eq(feedFollows.userId, users.id))
     .where(eq(feedFollows.userId, userId));
 }
+
+import { and } from "drizzle-orm";
+
+export async function deleteFeedFollow(userId: string, feedUrl: string) {
+  const feed = await db.select().from(feeds).where(eq(feeds.url, feedUrl)).then(res => res[0]);
+  if (!feed) {
+    throw new Error(`Feed with URL ${feedUrl} not found`);
+  }
+
+  return await db
+    .delete(feedFollows)
+    .where(and(eq(feedFollows.userId, userId), eq(feedFollows.feedId, feed.id)));
+}

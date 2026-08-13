@@ -1,7 +1,7 @@
 import { setUser, readConfig } from "./config.js";
 import { createUser, getUserByName, deleteUsers, getUsers } from "./db/queries/users.js";
 import { createFeed, getFeeds, getFeedByUrl } from "./db/queries/feeds.js";
-import { createFeedFollow, getFeedFollowsForUser } from "./db/queries/feed_follows.js";
+import { createFeedFollow, getFeedFollowsForUser, deleteFeedFollow } from "./db/queries/feed_follows.js";
 import { conn } from "./db/index.js";
 import { fetchFeed } from "./rss.js";
 import { Feed, User } from "./schema.js";
@@ -189,6 +189,21 @@ async function handlerFollowing(
   }
 }
 
+async function handlerUnfollow(
+  cmdName: string,
+  user: User,
+  ...args: string[]
+): Promise<void> {
+  if (args.length < 1) {
+    console.error("Error: feed url is required");
+    process.exit(1);
+  }
+
+  const url = args[0];
+  await deleteFeedFollow(user.id, url);
+  console.log(`Unfollowed feed: ${url}`);
+}
+
 async function main() {
   const registry: CommandsRegistry = {};
   registerCommand(registry, "login", handlerLogin);
@@ -200,6 +215,7 @@ async function main() {
   registerCommand(registry, "feeds", handlerFeeds);
   registerCommand(registry, "follow", middlewareLoggedIn(handlerFollow));
   registerCommand(registry, "following", middlewareLoggedIn(handlerFollowing));
+  registerCommand(registry, "unfollow", middlewareLoggedIn(handlerUnfollow));
 
   const args = process.argv.slice(2);
   if (args.length === 0) {

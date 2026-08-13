@@ -1,6 +1,6 @@
 import { setUser, readConfig } from "./config.js";
 import { createUser, getUserByName, deleteUsers, getUsers } from "./db/queries/users.js";
-import { createFeed } from "./db/queries/feeds.js";
+import { createFeed, getFeeds } from "./db/queries/feeds.js";
 import { conn } from "./db/index.js";
 import { fetchFeed } from "./rss.js";
 import { Feed, User } from "./schema.js";
@@ -127,6 +127,16 @@ async function handlerAddFeed(cmdName: string, ...args: string[]): Promise<void>
   printFeed(feed, currentUser);
 }
 
+async function handlerFeeds(cmdName: string, ...args: string[]): Promise<void> {
+  const allFeeds = await getFeeds();
+
+  for (const feed of allFeeds) {
+    console.log(`* Name: ${feed.name}`);
+    console.log(`* URL:  ${feed.url}`);
+    console.log(`* User: ${feed.userName}`);
+  }
+}
+
 async function main() {
   const registry: CommandsRegistry = {};
   registerCommand(registry, "login", handlerLogin);
@@ -135,6 +145,7 @@ async function main() {
   registerCommand(registry, "users", handlerUsers);
   registerCommand(registry, "agg", handlerAgg);
   registerCommand(registry, "addfeed", handlerAddFeed);
+  registerCommand(registry, "feeds", handlerFeeds);
 
   const args = process.argv.slice(2);
   if (args.length === 0) {

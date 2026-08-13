@@ -1,5 +1,5 @@
-import { setUser } from "./config.js";
-import { createUser, getUserByName, deleteUsers } from "./db/queries/users.js";
+import { setUser, readConfig } from "./config.js";
+import { createUser, getUserByName, deleteUsers, getUsers } from "./db/queries/users.js";
 import { conn } from "./db/index.js";
 
 type CommandHandler = (cmdName: string, ...args: string[]) => Promise<void>;
@@ -71,11 +71,26 @@ async function handlerReset(cmdName: string, ...args: string[]): Promise<void> {
   }
 }
 
+async function handlerUsers(cmdName: string, ...args: string[]): Promise<void> {
+  const allUsers = await getUsers();
+  const config = readConfig();
+  const currentUser = config.currentUserName;
+
+  for (const user of allUsers) {
+    if (user.name === currentUser) {
+      console.log(`* ${user.name} (current)`);
+    } else {
+      console.log(`* ${user.name}`);
+    }
+  }
+}
+
 async function main() {
   const registry: CommandsRegistry = {};
   registerCommand(registry, "login", handlerLogin);
   registerCommand(registry, "register", handlerRegister);
   registerCommand(registry, "reset", handlerReset);
+  registerCommand(registry, "users", handlerUsers);
 
   const args = process.argv.slice(2);
   if (args.length === 0) {

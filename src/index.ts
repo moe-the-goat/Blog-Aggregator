@@ -2,6 +2,7 @@ import { setUser, readConfig } from "./config.js";
 import { createUser, getUserByName, deleteUsers, getUsers } from "./db/queries/users.js";
 import { createFeed, getFeeds, getFeedByUrl, markFeedFetched, getNextFeedToFetch } from "./db/queries/feeds.js";
 import { createFeedFollow, getFeedFollowsForUser, deleteFeedFollow } from "./db/queries/feed_follows.js";
+import { createPost, getPostsForUser } from "./db/queries/posts.js";
 import { conn } from "./db/index.js";
 import { fetchFeed } from "./rss.js";
 import { Feed, User } from "./schema.js";
@@ -100,9 +101,20 @@ async function scrapeFeeds(): Promise<void> {
   await markFeedFetched(feed.id);
   const rssFeed = await fetchFeed(feed.url);
 
-  console.log(`--- Posts from ${rssFeed.channel.title} ---`);
+  console.log(`--- Saving posts from ${rssFeed.channel.title} ---`);
   for (const item of rssFeed.channel.item) {
-    console.log(`* ${item.title}`);
+    let pubDate = new Date(item.pubDate);
+    if (isNaN(pubDate.getTime())) {
+      pubDate = new Date();
+    }
+
+    await createPost(
+      item.title,
+      item.link,
+      item.description,
+      pubDate,
+      feed.id
+    );
   }
 }
 
@@ -268,6 +280,22 @@ async function handlerUnfollow(
   console.log(`Unfollowed feed: ${url}`);
 }
 
+async function handlerBrowse(
+  cmdName: string,
+  user: User,
+  ...args: string[]
+): Promise<void> {
+  const limit = args.length > 0 ? parseInt(args[0], 10) : 2;
+  const userPosts = await getPostsForUser(user.id, limit);
+
+  for (const post of userPosts) {
+    console.log(`--- ${post.title} ---`);
+    console.log(`Published: ${post.publishedAt}`);
+    console.log(`Link:      ${post.url}`);
+    console.log(`Summary:   ${post.description || "N/A"}\n`);
+  }
+}
+
 async function main() {
   const registry: CommandsRegistry = {};
   registerCommand(registry, "login", handlerLogin);
@@ -280,6 +308,7 @@ async function main() {
   registerCommand(registry, "follow", middlewareLoggedIn(handlerFollow));
   registerCommand(registry, "following", middlewareLoggedIn(handlerFollowing));
   registerCommand(registry, "unfollow", middlewareLoggedIn(handlerUnfollow));
+  registerCommand(registry, "browse", middlewareLoggedIn(handlerBrowse));
 
   const args = process.argv.slice(2);
   if (args.length === 0) {

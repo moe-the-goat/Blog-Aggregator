@@ -1,6 +1,7 @@
 import { setUser, readConfig } from "./config.js";
 import { createUser, getUserByName, deleteUsers, getUsers } from "./db/queries/users.js";
 import { conn } from "./db/index.js";
+import { fetchFeed } from "./rss.js";
 
 type CommandHandler = (cmdName: string, ...args: string[]) => Promise<void>;
 
@@ -85,12 +86,19 @@ async function handlerUsers(cmdName: string, ...args: string[]): Promise<void> {
   }
 }
 
+async function handlerAgg(cmdName: string, ...args: string[]): Promise<void> {
+  const url = "https://www.wagslane.dev/index.xml";
+  const feed = await fetchFeed(url);
+  console.log(JSON.stringify(feed, null, 2));
+}
+
 async function main() {
   const registry: CommandsRegistry = {};
   registerCommand(registry, "login", handlerLogin);
   registerCommand(registry, "register", handlerRegister);
   registerCommand(registry, "reset", handlerReset);
   registerCommand(registry, "users", handlerUsers);
+  registerCommand(registry, "agg", handlerAgg);
 
   const args = process.argv.slice(2);
   if (args.length === 0) {

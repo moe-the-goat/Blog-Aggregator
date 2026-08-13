@@ -1,5 +1,5 @@
 import { setUser } from "./config.js";
-import { createUser, getUserByName } from "./db/queries/users.js";
+import { createUser, getUserByName, deleteUsers } from "./db/queries/users.js";
 import { conn } from "./db/index.js";
 
 type CommandHandler = (cmdName: string, ...args: string[]) => Promise<void>;
@@ -61,10 +61,21 @@ async function handlerRegister(cmdName: string, ...args: string[]): Promise<void
   console.log(`User ${user.name} created successfully`);
 }
 
+async function handlerReset(cmdName: string, ...args: string[]): Promise<void> {
+  try {
+    await deleteUsers();
+    console.log("Database reset successfully");
+  } catch (err: any) {
+    console.error("Failed to reset database");
+    process.exit(1);
+  }
+}
+
 async function main() {
   const registry: CommandsRegistry = {};
   registerCommand(registry, "login", handlerLogin);
   registerCommand(registry, "register", handlerRegister);
+  registerCommand(registry, "reset", handlerReset);
 
   const args = process.argv.slice(2);
   if (args.length === 0) {

@@ -8,6 +8,12 @@ import { Feed, User } from "./schema.js";
 
 type CommandHandler = (cmdName: string, ...args: string[]) => Promise<void>;
 
+type UserCommandHandler = (
+  cmdName: string,
+  user: User,
+  ...args: string[]
+) => Promise<void>;
+
 type CommandsRegistry = {
   [key: string]: CommandHandler;
 };
@@ -31,6 +37,24 @@ async function runCommand(
     process.exit(1);
   }
   await handler(cmdName, ...args);
+}
+
+function middlewareLoggedIn(handler: UserCommandHandler): CommandHandler {
+  return async (cmdName: string, ...args: string[]): Promise<void> => {
+    const config = readConfig();
+    if (!config.currentUserName) {
+      console.error("Error: no user is currently logged in");
+      process.exit(1);
+    }
+
+    const currentUser = await getUserByName(config.currentUserName);
+    if (!currentUser) {
+      console.error(`Error: logged in user ${config.currentUserName} does not exist`);
+      process.exit(1);
+    }
+
+    await handler(cmdName, currentUser, ...args);
+  };
 }
 
 function printFeed(feed: Feed, user: User): void {
@@ -104,28 +128,19 @@ async function handlerAgg(cmdName: string, ...args: string[]): Promise<void> {
   console.log(JSON.stringify(feed, null, 2));
 }
 
-async function handlerAddFeed(cmdName: string, ...args: string[]): Promise<void> {
+async function handlerAddFeed(
+  cmdName: string,
+  user: User,
+  ...args: string[]
+): Promise<void> {
   if (args.length < 2) {
     console.error("Error: both feed name and url are required");
     process.exit(1);
   }
 
   const [name, url] = args;
-  const config = readConfig();
-
-  if (!config.currentUserName) {
-    console.error("Error: no user is currently logged in");
-    process.exit(1);
-  }
-
-  const currentUser = await getUserByName(config.currentUserName);
-  if (!currentUser) {
-    console.error(`Error: logged in user ${config.currentUserName} does not exist`);
-    process.exit(1);
-  }
-
-  const feed = await createFeed(name, url, currentUser.id);
-  const follow = await createFeedFollow(currentUser.id, feed.id);
+  const feed = await createFeed(name, url, user.id);
+  const follow = await createFeedFollow(user.id, feed.id);
 
   console.log(`Feed: ${follow.feedName}`);
   console.log(`User: ${follow.userName}`);
@@ -141,52 +156,34 @@ async function handlerFeeds(cmdName: string, ...args: string[]): Promise<void> {
   }
 }
 
-async function handlerFollow(cmdName: string, ...args: string[]): Promise<void> {
+async function handlerFollow(
+  cmdName: string,
+  user: User,
+  ...args: string[]
+): Promise<void> {
   if (args.length < 1) {
     console.error("Error: feed url is required");
     process.exit(1);
   }
 
   const url = args[0];
-  const config = readConfig();
-
-  if (!config.currentUserName) {
-    console.error("Error: no user is currently logged in");
-    process.exit(1);
-  }
-
-  const currentUser = await getUserByName(config.currentUserName);
-  if (!currentUser) {
-    console.error(`Error: logged in user ${config.currentUserName} does not exist`);
-    process.exit(1);
-  }
-
   const feed = await getFeedByUrl(url);
   if (!feed) {
     console.error(`Error: feed with url ${url} not found`);
     process.exit(1);
   }
 
-  const follow = await createFeedFollow(currentUser.id, feed.id);
+  const follow = await createFeedFollow(user.id, feed.id);
   console.log(`Feed: ${follow.feedName}`);
   console.log(`User: ${follow.userName}`);
 }
 
-async function handlerFollowing(cmdName: string, ...args: string[]): Promise<void> {
-  const config = readConfig();
-
-  if (!config.currentUserName) {
-    console.error("Error: no user is currently logged in");
-    process.exit(1);
-  }
-
-  const currentUser = await getUserByName(config.currentUserName);
-  if (!currentUser) {
-    console.error(`Error: logged in user ${config.currentUserName} does not exist`);
-    process.exit(1);
-  }
-
-  const follows = await getFeedFollowsForUser(currentUser.id);
+async function handlerFollowing(
+  cmdName: string,
+  user: User,
+  ...args: string[]
+): Promise<void> {
+  const follows = await getFeedFollowsForUser(user.id);
   for (const follow of follows) {
     console.log(`* ${follow.feedName}`);
   }
@@ -199,10 +196,10 @@ async function main() {
   registerCommand(registry, "reset", handlerReset);
   registerCommand(registry, "users", handlerUsers);
   registerCommand(registry, "agg", handlerAgg);
-  registerCommand(registry, "addfeed", handlerAddFeed);
+  registerCommand(registry, "addfeed", middlewareLoggedIn(handlerAddFeed));
   registerCommand(registry, "feeds", handlerFeeds);
-  registerCommand(registry, "follow", handlerFollow);
-  registerCommand(registry, "following", handlerFollowing);
+  registerCommand(registry, "follow", middlewareLoggedIn(handlerFollow));
+  registerCommand(registry, "following", middlewareLoggedIn(handlerFollowing));
 
   const args = process.argv.slice(2);
   if (args.length === 0) {

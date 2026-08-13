@@ -1,6 +1,6 @@
 import { setUser, readConfig } from "./config.js";
 import { createUser, getUserByName, deleteUsers, getUsers } from "./db/queries/users.js";
-import { createFeed, getFeeds, getFeedByUrl } from "./db/queries/feeds.js";
+import { createFeed, getFeeds, getFeedByUrl, markFeedFetched, getNextFeedToFetch } from "./db/queries/feeds.js";
 import { createFeedFollow, getFeedFollowsForUser, deleteFeedFollow } from "./db/queries/feed_follows.js";
 import { conn } from "./db/index.js";
 import { fetchFeed } from "./rss.js";
@@ -66,6 +66,46 @@ function printFeed(feed: Feed, user: User): void {
   console.log(`* User:         ${user.name}`);
 }
 
+function parseDuration(durationStr: string): number {
+  const regex = /^(\d+)(ms|s|m|h)$/;
+  const match = durationStr.match(regex);
+  if (!match) {
+    throw new Error("Invalid duration format. Use values like 1s, 1m, 1h, 500ms");
+  }
+
+  const value = parseInt(match[1], 10);
+  const unit = match[2];
+
+  switch (unit) {
+    case "ms":
+      return value;
+    case "s":
+      return value * 1000;
+    case "m":
+      return value * 60 * 1000;
+    case "h":
+      return value * 60 * 60 * 1000;
+    default:
+      throw new Error("Unknown duration unit");
+  }
+}
+
+async function scrapeFeeds(): Promise<void> {
+  const feed = await getNextFeedToFetch();
+  if (!feed) {
+    console.log("No feeds found to fetch.");
+    return;
+  }
+
+  await markFeedFetched(feed.id);
+  const rssFeed = await fetchFeed(feed.url);
+
+  console.log(`--- Posts from ${rssFeed.channel.title} ---`);
+  for (const item of rssFeed.channel.item) {
+    console.log(`* ${item.title}`);
+  }
+}
+
 async function handlerLogin(cmdName: string, ...args: string[]): Promise<void> {
   if (args.length === 0) {
     console.error("Error: username is required for login command");
@@ -123,9 +163,33 @@ async function handlerUsers(cmdName: string, ...args: string[]): Promise<void> {
 }
 
 async function handlerAgg(cmdName: string, ...args: string[]): Promise<void> {
-  const url = "https://www.wagslane.dev/index.xml";
-  const feed = await fetchFeed(url);
-  console.log(JSON.stringify(feed, null, 2));
+  if (args.length === 0) {
+    console.error("Error: time_between_reqs argument is required (e.g. 1s, 1m)");
+    process.exit(1);
+  }
+
+  const timeBetweenReqsStr = args[0];
+  const timeBetweenRequests = parseDuration(timeBetweenReqsStr);
+
+  console.log(`Collecting feeds every ${timeBetweenReqsStr}`);
+
+  const handleError = (err: any) => {
+    console.error("Scraping error:", err.message || err);
+  };
+
+  scrapeFeeds().catch(handleError);
+
+  const interval = setInterval(() => {
+    scrapeFeeds().catch(handleError);
+  }, timeBetweenRequests);
+
+  await new Promise<void>((resolve) => {
+    process.on("SIGINT", () => {
+      console.log("Shutting down feed aggregator...");
+      clearInterval(interval);
+      resolve();
+    });
+  });
 }
 
 async function handlerAddFeed(

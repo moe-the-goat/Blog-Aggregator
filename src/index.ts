@@ -1,5 +1,6 @@
 import { setUser } from "./config.js";
 import { createUser, getUserByName } from "./db/queries/users.js";
+import { conn } from "./db/index.js";
 
 type CommandHandler = (cmdName: string, ...args: string[]) => Promise<void>;
 
@@ -76,9 +77,11 @@ async function main() {
 
   try {
     await runCommand(registry, cmdName, ...cmdArgs);
+    await conn.end();
     process.exit(0);
   } catch (err: any) {
     console.error(err.message || err);
+    await conn.end();
     process.exit(1);
   }
 }
